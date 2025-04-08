@@ -1,0 +1,21 @@
+[project]
+name = "mimamori"
+version = "0.1.0"
+description = "A lightweight CLI for Mihomo proxy management in restricted environments"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1.8",
+    "pydantic-settings>=2.8.1",
+    "pyyaml>=6.0.2",
+    "requests>=2.32.3",
+    "rich>=14.0.0",
+    "tomlkit>=0.13.2",
+]
+
+[project.scripts]
+mim = "mimamori.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
