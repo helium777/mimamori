@@ -130,10 +130,10 @@ def setup(url: Optional[str], yes: bool) -> None:
         need_setup_aliases = Confirm.ask(
             "[bold]Do you want to set up these shell aliases?"
         )
+        aliases_enabled = False
 
         if need_setup_aliases:
             shell = os.environ.get("SHELL", "")
-            aliases_enabled = False
 
             aliases_content = (
                 "\n### Mimamori aliases ###\n"
@@ -179,10 +179,10 @@ def setup(url: Optional[str], yes: bool) -> None:
             console.print("- Run [cyan]pp[/cyan] to run commands with proxy enabled")
         else:
             console.print(
-                "- Run [cyan]mim proxy export[/cyan] to enable the proxy in current shell"
+                "- Run [cyan]eval $(mim proxy export)[/cyan] to enable the proxy in current shell"
             )
             console.print(
-                "- Run [cyan]mim proxy unset[/cyan] to disable the proxy in current shell"
+                "- Run [cyan]eval $(mim proxy unset)[/cyan] to disable the proxy in current shell"
             )
             console.print(
                 "- Run [cyan]mim proxy run[/cyan] to run commands with proxy enabled"
