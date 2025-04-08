@@ -2,6 +2,7 @@ from pathlib import Path
 import requests
 import yaml
 from typing import Literal
+import base64
 
 from .globals import GLOBAL_CONFIG_TEMPLATE
 
@@ -32,7 +33,16 @@ def create_mihomo_config(
     # Get proxy nodes from the subscription
     response = requests.get(subscription)
     response.raise_for_status()
-    sub_yaml = yaml.safe_load(response.text)
+    content = response.text
+
+    # Try to decode base64 if needed
+    try:
+        decoded_content = base64.b64decode(content).decode("utf-8")
+        sub_yaml = yaml.safe_load(decoded_content)
+    except:
+        # If decoding fails, assume it's already in YAML format
+        sub_yaml = yaml.safe_load(content)
+
     proxies = sub_yaml.get("proxies")
     if proxies is None:
         raise ValueError("No proxies found in the subscription")
