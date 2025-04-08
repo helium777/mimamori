@@ -12,6 +12,28 @@ dependencies = [
     "rich>=14.0.0",
     "tomlkit>=0.13.2",
 ]
+authors = [
+    {name = "Helium7", email = "helium747@gmail.com"},
+]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Developers",
+    "Environment :: Console",
+    "Topic :: Internet :: Proxy Servers",
+    "Topic :: System :: Networking",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/helium777/mimamori"
+"Bug Tracker" = "https://github.com/helium777/mimamori/issues"
 
 [project.scripts]
 mim = "mimamori.main:main"
