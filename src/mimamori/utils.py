@@ -2,7 +2,6 @@ from contextlib import closing
 from pathlib import Path
 import socket
 import time
-
 import requests
 
 

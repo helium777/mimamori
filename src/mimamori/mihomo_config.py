@@ -31,17 +31,16 @@ def create_mihomo_config(
         raise NotImplementedError("Rule mode is not implemented yet")
 
     # Get proxy nodes from the subscription
-    response = requests.get(subscription)
+    response = requests.get(subscription, headers={"User-Agent": "Clash"})
     response.raise_for_status()
     content = response.text
 
-    # Try to decode base64 if needed
-    try:
-        decoded_content = base64.b64decode(content).decode("utf-8")
-        sub_yaml = yaml.safe_load(decoded_content)
-    except:
-        # If decoding fails, assume it's already in YAML format
-        sub_yaml = yaml.safe_load(content)
+    sub_yaml = yaml.safe_load(content)
+    if not isinstance(sub_yaml, dict):
+        raise ValueError(
+            "Could not parse subscription content as YAML"
+            f"First 100 characters: {content[:100]}"
+        )
 
     proxies = sub_yaml.get("proxies")
     if proxies is None:
