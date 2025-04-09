@@ -36,6 +36,9 @@ pp curl google.com # Run specific commands through proxy without affecting shell
 mim status
 ```
 
+> [!CAUTION]
+> The `pp` (or `mim proxy run`) command, while similar to gg/proxychains-ng in usage, only configures environment variables. While most common applications respect these variables, some programs may ignore them. Future versions may implement true transparent proxying.
+
 ## Comparison with Similar Projects
 
 - **vs. [gg](https://github.com/mzz2017/gg)**: While gg provides an excellent portable solution with its own implementation, Mimamori leverages Mihomo's extensive protocol support and benefits from its regular maintenance.
@@ -46,4 +49,4 @@ mim status
 
 - **[mihoro](https://github.com/spencerwooo/mihoro)**: Mihomo CLI client on Linux. Formerly `clashrup`.
 - **[gg](https://github.com/mzz2017/gg)**: A command-line tool for one-click proxy in your research and development without installing v2ray or anything else (only for linux).
-- **[proxychains](https://github.com/rofl0r/proxychains-ng)**: A preloader which hooks calls to sockets in dynamically linked programs and redirects it through one or more socks/http proxies.
+- **[proxychains-ng](https://github.com/rofl0r/proxychains-ng)**: A preloader which hooks calls to sockets in dynamically linked programs and redirects it through one or more socks/http proxies.
