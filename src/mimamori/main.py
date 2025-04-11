@@ -395,19 +395,26 @@ def config_show() -> None:
 
 @cli.command("cleanup")
 def cleanup() -> None:
-    """Remove all configuration files and binaries, stop service."""
+    """Remove all configuration files and binaries, stop service, and delete the service file."""
     try:
         status = get_service_status()
         is_running = status["is_running"]
         is_enabled = status["is_enabled"]
 
+        # Stop service if it is running
         if is_running:
             stop_service()
             console.print("[green]Stopped service successfully.")
 
+        # Disable service if it is enabled
         if is_enabled:
             disable_service()
             console.print("[green]Disabled service successfully.")
+
+        # Remove service file
+        if SERVICE_FILE_PATH.exists():
+            SERVICE_FILE_PATH.unlink()
+            console.print(f"[green]Deleted service file at {SERVICE_FILE_PATH}")
 
         # Remove configuration files
         config_path = MIMAMORI_CONFIG_PATH
