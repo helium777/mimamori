@@ -36,7 +36,7 @@ def check_proxy_connectivity() -> int:
     """Return the connection latency to Google.
 
     Returns:
-        The connection latency in milliseconds
+        The connection latency in milliseconds, or -1 if the connection is timed out, or -2 if the connection is failed.
     """
     try:
         start_time = time.time()
@@ -44,5 +44,7 @@ def check_proxy_connectivity() -> int:
         end_time = time.time()
         response.raise_for_status()
         return int((end_time - start_time) * 1000)
-    except requests.exceptions.RequestException:
+    except requests.exceptions.Timeout:
         return -1
+    except requests.exceptions.RequestException:
+        return -2

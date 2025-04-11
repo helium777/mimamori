@@ -205,7 +205,6 @@ alias [cyan]pp[/cyan]=mim proxy run              - Run commands with proxy enabl
 @cli.command("status")
 def status() -> None:
     """Display proxy status."""
-    # TODO: refactor this
     status = get_service_status()
     is_enabled = status["is_enabled"]
     is_running = status["is_running"]
@@ -231,11 +230,23 @@ def status() -> None:
     )
 
     connectivity_status = (
-        Text("●", style="green bold") if latency != -1 else Text("●", style="red bold")
+        Text("●", style="red bold")
+        if latency == -2
+        else Text("●", style="yellow bold")
+        if latency == -1
+        else Text("●", style="green bold")
     )
     connectivity_text = Text(
-        f" {latency}ms" if latency != -1 else " >1000ms",
-        style="green bold" if latency != -1 else "red bold",
+        " Failed"
+        if latency == -2
+        else f" {latency}ms"
+        if latency != -1
+        else " >1000ms",
+        style="red bold"
+        if latency == -2
+        else "yellow bold"
+        if latency == -1
+        else "green bold",
     )
 
     # Create status table
@@ -247,26 +258,24 @@ def status() -> None:
     status_table.add_row("Auto-start:", enabled_status + enabled_text)
     status_table.add_row("Connectivity:", connectivity_status + connectivity_text)
 
-    if running_time:
-        status_table.add_row("Uptime:", Text(running_time, style="cyan"))
+    status_table.add_row("Uptime:", Text(running_time, style="cyan"))
 
     status_table.add_row("Port:", Text(str(settings.mihomo.port), style="cyan"))
     status_table.add_row("API Port:", Text(str(settings.mihomo.api_port), style="cyan"))
 
     # Create log table if there are logs
     log_panel = None
-    if last_log_messages and is_running:
-        log_table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+    if last_log_messages:
+        log_table = Table(show_header=False, box=None, padding=(0, 1))
         log_table.add_column("Logs", style="dim")
 
-        for log in last_log_messages[-5:]:  # Show last 5 log messages
+        for log in last_log_messages:
             log_table.add_row(log)
 
         log_panel = Panel(
             log_table,
             title="[bold]Recent Logs",
             border_style="blue",
-            expand=False,
         )
 
     # Combine panels
@@ -274,7 +283,7 @@ def status() -> None:
         status_table,
         title="[bold]Proxy Status",
         border_style="green"
-        if is_running and latency != -1
+        if is_running and latency > 0
         else "yellow"
         if is_running
         else "red",
