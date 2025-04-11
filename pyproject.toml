@@ -41,3 +41,10 @@ mim = "mimamori.main:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.5.1",
+    "cz-conventional-gitmoji>=0.7.0",
+    "pre-commit>=4.2.0",
+]

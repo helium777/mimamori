@@ -1,0 +1,8 @@
+[tool.commitizen]
+name = "cz_gitmoji"
+tag_format = "v$version"
+bump_message = "🔖 bump(release): v$current_version → v$new_version"
+version_scheme = "pep440"
+version_provider = "uv"
+update_changelog_on_bump = true
+major_version_zero = true
