@@ -2,7 +2,6 @@ from pathlib import Path
 import requests
 import yaml
 from typing import Literal
-import base64
 
 from .globals import GLOBAL_CONFIG_TEMPLATE
 
