@@ -83,7 +83,7 @@ def setup(url: Optional[str], yes: bool) -> None:
         need_download = False
         if not binary_path.exists():
             need_download = True
-        elif Confirm.ask(
+        elif yes or Confirm.ask(
             f"[yellow]Mihomo binary already exists at {binary_path}.[/yellow]\n[bold]Do you want to re-downloading it?[/bold]"
         ):
             need_download = True
@@ -110,56 +110,65 @@ def setup(url: Optional[str], yes: bool) -> None:
 
         console.print()
         # 3. Create service file
-        if Confirm.ask(
-            "[bold]Do you want to create a service file to keep Mihomo running?"
-        ):
-            with console.status("[bold]Creating service file..."):
-                create_service_file(SERVICE_FILE_PATH)
-                console.print(f"[green]Created service file at {SERVICE_FILE_PATH}")
+        if not SERVICE_FILE_PATH.exists():
+            if yes or Confirm.ask(
+                "[bold]Do you want to create a service file to keep Mihomo running?"
+            ):
+                with console.status("[bold]Creating service file..."):
+                    create_service_file(SERVICE_FILE_PATH)
+                    console.print(f"[green]Created service file at {SERVICE_FILE_PATH}")
+        else:
+            console.print(f"[green]Service file already exists at {SERVICE_FILE_PATH}")
 
-                reload_daemon()
-                enable_service()
-                start_service()
+        reload_daemon()
+        enable_service()
+        restart_service()
 
         console.print()
         # 4. Set up shell aliases
         console.print("""[bold]Recommended shell aliases:[/bold]
-[cyan]pon[/cyan]  - Enable proxy in current shell  (eval $(mim proxy export))
-[cyan]poff[/cyan] - Disable proxy when done        (eval $(mim proxy unset))
-[cyan]pp[/cyan]   - Run commands with proxy enabled (mim proxy run)""")
-        need_setup_aliases = Confirm.ask(
-            "[bold]Do you want to set up these shell aliases?"
-        )
-        aliases_enabled = False
+alias [cyan]pon[/cyan]=eval $(mim proxy export)  - Enable proxy in current shell
+alias [cyan]poff[/cyan]=eval $(mim proxy unset)  - Disable proxy when done
+alias [cyan]pp[/cyan]=mim proxy run              - Run commands with proxy enabled""")
 
-        if need_setup_aliases:
-            shell = os.environ.get("SHELL", "")
-
-            aliases_content = (
-                "\n### Mimamori aliases ###\n"
-                "alias pon='eval $(mim proxy export)'\n"
-                "alias poff='eval $(mim proxy unset)'\n"
-                "alias pp='mim proxy run'\n"
+        shell = os.environ.get("SHELL", "")
+        rc_path = None
+        if "bash" in shell:
+            rc_path = Path.home() / ".bashrc"
+        elif "zsh" in shell:
+            rc_path = Path.home() / ".zshrc"
+        else:
+            console.print(
+                f"[yellow]Unsupported shell {shell}. Please add the aliases manually."
             )
 
-            def setup_aliases_for_shell(rc_path):
-                if aliases_already_exist(rc_path):
-                    console.print(f"[yellow]Aliases already exist in ~/{rc_path.name}")
-                    return True
-                else:
+        aliases_enabled = False
+        setup_aliases = False
+        if rc_path:
+            if aliases_already_exist(rc_path):
+                console.print(
+                    f"[green]You have already set up the shell aliases in ~/{rc_path.name}"
+                )
+                aliases_enabled = True
+            else:
+                need_setup_aliases = yes or Confirm.ask(
+                    "[bold]Do you want to set up these shell aliases?"
+                )
+
+                if need_setup_aliases:
+                    aliases_content = (
+                        "\n### Mimamori aliases ###\n"
+                        "alias pon='eval $(mim proxy export)'\n"
+                        "alias poff='eval $(mim proxy unset)'\n"
+                        "alias pp='mim proxy run'\n"
+                        "### End of Mimamori aliases ###\n"
+                    )
+
                     with open(rc_path, "a") as f:
                         f.write(aliases_content)
                     console.print(f"[green]Added aliases to ~/{rc_path.name}")
-                    return True
-
-            if "bash" in shell:
-                aliases_enabled = setup_aliases_for_shell(Path.home() / ".bashrc")
-            elif "zsh" in shell:
-                aliases_enabled = setup_aliases_for_shell(Path.home() / ".zshrc")
-            else:
-                console.print(
-                    "[yellow]Unsupported shell. Please add the aliases manually."
-                )
+                    aliases_enabled = True
+                    setup_aliases = True
 
         # 5. Save settings
         settings.save_to_file()
@@ -169,9 +178,10 @@ def setup(url: Optional[str], yes: bool) -> None:
         console.print("[green]🥳 Setup completed successfully!")
         console.print("\nNext steps:")
         if aliases_enabled:
-            console.print(
-                "[bold yellow]You should restart your shell to apply the aliases."
-            )
+            if setup_aliases:
+                console.print(
+                    "[bold yellow]You should restart your shell to apply the aliases."
+                )
             console.print("- Run [cyan]pon[/cyan] to enable the proxy in current shell")
             console.print(
                 "- Run [cyan]poff[/cyan] to disable the proxy in current shell"
