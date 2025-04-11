@@ -10,8 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from mimamori.globals import MIMAMORI_CONFIG_PATH, SERVICE_FILE_PATH
-
+from .globals import MIMAMORI_CONFIG_PATH, SERVICE_FILE_PATH
 from . import __version__
 from .settings import settings
 from .download import download_mihomo, get_latest_version, get_system_info
