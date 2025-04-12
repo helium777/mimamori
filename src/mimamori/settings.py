@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Literal
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -23,19 +22,12 @@ class MihomoSettings(BaseSettings):
     api_port: int = Field(default=9090)
 
 
-class ServiceSettings(BaseSettings):
-    """Settings for the service management."""
-
-    type: Literal["systemd", "daemon"] = Field(default="systemd")
-
-
 class Settings(BaseSettings):
     """Main settings for Mimamori."""
 
     model_config = SettingsConfigDict(toml_file=MIMAMORI_CONFIG_PATH)
 
     mihomo: MihomoSettings = Field(default_factory=MihomoSettings)
-    service: ServiceSettings = Field(default_factory=ServiceSettings)
 
     @classmethod
     def settings_customise_sources(
