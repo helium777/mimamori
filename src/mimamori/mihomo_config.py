@@ -1,14 +1,12 @@
 from pathlib import Path
 import requests
 import yaml
-from typing import Literal
 
-from .globals import GLOBAL_CONFIG_TEMPLATE
+from .globals import MIHOMO_CONFIG_TEMPLATE
 
 
 def create_mihomo_config(
     config_path: Path,
-    config_preset: Literal["global", "rule"],
     subscription: str,
     port: int,
     api_port: int,
@@ -18,16 +16,12 @@ def create_mihomo_config(
 
     Args:
         config_path: Path where to save the config file
-        config_preset: Configuration preset ("global" or "rule")
         subscription: Subscription URL
         port: Port number or "auto" for auto-selection
     """
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if config_preset == "global":
-        template = GLOBAL_CONFIG_TEMPLATE
-    else:
-        raise NotImplementedError("Rule mode is not implemented yet")
+    template = MIHOMO_CONFIG_TEMPLATE
 
     # Get proxy nodes from the subscription
     response = requests.get(subscription, headers={"User-Agent": "Clash"})

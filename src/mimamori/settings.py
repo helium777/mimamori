@@ -18,7 +18,6 @@ class MihomoSettings(BaseSettings):
     binary_path: str = Field(default=str(Path.home() / ".local" / "bin" / "mihomo"))
     config_dir: str = Field(default=str(Path.home() / ".config" / "mihomo"))
     version: str = Field(default="latest")
-    config_preset: Literal["global", "rule"] = Field(default="global")
     subscription: str = Field(default="")
     port: int = Field(default=7890)
     api_port: int = Field(default=9090)

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-GLOBAL_CONFIG_TEMPLATE = """
+MIHOMO_CONFIG_TEMPLATE = """
 mixed-port: # auto-generated
 external-controller: # auto-generated
 mode: global

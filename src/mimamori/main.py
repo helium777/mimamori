@@ -2,8 +2,10 @@ import os
 import sys
 import shutil
 from pathlib import Path
-from typing import List, Optional
+import traceback
+from typing import List, Optional, Dict
 import click
+import requests
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
@@ -36,6 +38,9 @@ from .environment import (
     generate_unset_commands,
 )
 from .environment import run_with_proxy_env
+from .mihomo_api import (
+    MihomoAPI,
+)
 
 
 console = Console()
@@ -491,13 +496,138 @@ def proxy_run(command: List[str]) -> None:
     sys.exit(exit_code)
 
 
+@cli.command("select")
+def select() -> None:
+    """Select a proxy from the GLOBAL proxy group."""
+    if not is_service_running():
+        console.print(
+            "[bold red]Error: Mimamori service is not running. "
+            "Please start the service first with 'mim start'."
+        )
+        sys.exit(1)
+
+    api_port = settings.mihomo.api_port
+    api_base_url = f"http://127.0.0.1:{api_port}"
+    mihomo_api = MihomoAPI(api_base_url)
+
+    # Fetch proxy list
+    try:
+        proxies = mihomo_api.get_proxies("GLOBAL")
+
+        if not proxies:
+            console.print("[bold red]Error:[/bold red] No proxies found.")
+            sys.exit(1)
+    except requests.RequestException as e:
+        console.print(f"[bold red]Error fetching proxy list:[/bold red] {e}")
+        sys.exit(1)
+
+    # Test latency for each proxy
+    with console.status("[bold]Testing proxy latencies...") as status:
+
+        def update_progress(current: int, total: int):
+            status.update(f"[bold]Testing proxy latencies... ({current}/{total})")
+
+        proxy_latencies = mihomo_api.test_proxy_latencies(proxies, update_progress)
+
+    _display_proxy_table(proxy_latencies)
+    console.print()
+
+    # Get current selection
+    current_proxy = mihomo_api.get_current_proxy("GLOBAL")
+    console.print(f"Current selection: [bold cyan]{current_proxy}[/bold cyan]")
+
+    # Let user select a proxy
+    while True:
+        selection = Prompt.ask("[bold]Enter proxy number to select")
+
+        try:
+            idx = int(selection) - 1
+            if idx < 0 or idx >= len(proxy_latencies):
+                console.print("[bold red]Selection out of range. Please try again.")
+                continue
+
+            selected_proxy = list(proxy_latencies.keys())[idx]
+
+            # Update the selection
+            mihomo_api.select_proxy("GLOBAL", selected_proxy)
+
+            console.print(
+                f"[bold green]Successfully switched to proxy: {selected_proxy}"
+            )
+            break
+        except ValueError:
+            console.print("[bold red]Invalid input. Please enter a number.")
+            continue
+        except requests.RequestException as e:
+            console.print(f"[bold red]Error updating proxy selection: [/bold red]{e}")
+            sys.exit(1)
+
+
 def main() -> None:
     """Main entry point."""
     try:
         cli()
     except Exception as e:
         console.print(f"[bold red]Unexpected error: [/bold red]{e}")
+        console.print(traceback.format_exc())
         sys.exit(1)
+
+
+def _display_proxy_table(proxy_latencies: Dict[str, int]):
+    """
+    Display a grid of proxies with their latencies.
+
+    Args:
+        proxy_latencies: Dictionary mapping proxy names to latencies
+    """
+    # Get terminal width
+    console_width = max(console.width, 80)
+
+    # Determine optimal grid dimensions based on terminal width
+    card_width = 20
+    padding = 2
+    max_columns = max(1, (console_width + padding) // (card_width + padding))
+
+    # Create grid for proxies
+    proxy_grid = Table.grid(expand=True)
+    for _ in range(max_columns):
+        proxy_grid.add_column(ratio=1, overflow="fold")
+
+    # Add each proxy to the grid
+    current_row = []
+    for idx, (proxy, latency) in enumerate(proxy_latencies.items()):
+        # Format the card content
+        latency_str = f"{latency}ms" if latency > 0 else "Timeout"
+        latency_style = (
+            "green"
+            if 0 < latency < 200
+            else "yellow"
+            if 200 <= latency < 500
+            else "red"
+        )
+
+        # Create a compact panel
+        proxy_text = Text(proxy, overflow="fold")
+        latency_text = Text(latency_str, style=latency_style)
+
+        table = Table.grid(expand=True, padding=(0, 1))
+        table.add_column()
+        table.add_column(justify="right")
+        table.add_row(proxy_text, latency_text)
+
+        card = Panel(table, title=f"#{idx + 1}", title_align="left", border_style="dim")
+
+        current_row.append(card)
+
+        # When we've filled a row or reached the end, add it to the grid
+        if len(current_row) == max_columns or idx == len(proxy_latencies) - 1:
+            # Pad the row with empty strings if needed
+            while len(current_row) < max_columns:
+                current_row.append("")
+            proxy_grid.add_row(*current_row)
+            current_row = []
+
+    console.print(proxy_grid)
 
 
 def _generate_mihomo_config():
