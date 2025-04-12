@@ -1,4 +1,5 @@
 from contextlib import closing
+import os
 from pathlib import Path
 import socket
 import time
@@ -32,6 +33,41 @@ def aliases_already_exist(file_path: Path) -> bool:
     return "### Mimamori aliases ###" in content
 
 
+def remove_aliases(file_path: Path) -> bool:
+    """Remove Mimamori aliases from the given file."""
+    if not file_path.exists():
+        return False
+
+    with open(file_path, "r") as f:
+        content = f.read()
+
+    # Remove content between "### Mimamori aliases ###" and "### End of Mimamori aliases ###" (inclusive)
+    start_marker = "### Mimamori aliases ###"
+    end_marker = "### End of Mimamori aliases ###"
+    start = content.find(start_marker)
+    end = content.find(end_marker) + len(end_marker)
+    if start == -1 or end == -1:
+        return False
+
+    # Remove leading and trailing newlines
+    try:
+        if content[start - 2 : start] == "\n\n":
+            start -= 1
+    except IndexError:
+        pass
+    try:
+        if content[end] == "\n":
+            end += 1
+    except IndexError:
+        pass
+
+    with open(file_path, "w") as f:
+        f.write(content[:start])
+        f.write(content[end:])
+
+    return True
+
+
 def check_proxy_connectivity() -> int:
     """Return the connection latency to Google.
 
@@ -48,3 +84,14 @@ def check_proxy_connectivity() -> int:
         return -1
     except requests.exceptions.RequestException:
         return -2
+
+
+def get_shell_rc_path() -> Path:
+    """Get the path to the shell's rc file."""
+    shell = os.environ.get("SHELL", "")
+    rc_path = None
+    if "bash" in shell:
+        rc_path = Path.home() / ".bashrc"
+    elif "zsh" in shell:
+        rc_path = Path.home() / ".zshrc"
+    return shell, rc_path

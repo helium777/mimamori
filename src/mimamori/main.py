@@ -22,6 +22,8 @@ from .utils import (
     aliases_already_exist,
     check_port_availability,
     check_proxy_connectivity,
+    get_shell_rc_path,
+    remove_aliases,
 )
 from .systemd import (
     create_service_file,
@@ -152,13 +154,8 @@ alias [cyan]pon[/cyan]=eval $(mim proxy export)  - Enable proxy in current shell
 alias [cyan]poff[/cyan]=eval $(mim proxy unset)  - Disable proxy when done
 alias [cyan]pp[/cyan]=mim proxy run              - Run commands with proxy enabled""")
 
-        shell = os.environ.get("SHELL", "")
-        rc_path = None
-        if "bash" in shell:
-            rc_path = Path.home() / ".bashrc"
-        elif "zsh" in shell:
-            rc_path = Path.home() / ".zshrc"
-        else:
+        shell, rc_path = get_shell_rc_path()
+        if rc_path is None:
             console.print(
                 f"[yellow]Unsupported shell {shell}. Please add the aliases manually."
             )
@@ -466,6 +463,19 @@ def cleanup() -> None:
         if binary_path.exists():
             binary_path.unlink()
             console.print(f"[green]Deleted Mihomo binary at {binary_path}")
+
+        # Remove Mimamori aliases
+        shell, rc_path = get_shell_rc_path()
+        if not rc_path:
+            console.print(
+                "[yellow]Unsupported shell {shell}. Please remove the aliases manually."
+            )
+        elif remove_aliases(rc_path):
+            console.print(f"[green]Deleted Mimamori aliases in {rc_path}")
+        else:
+            console.print(
+                f"[yellow]No Mimamori aliases found in {rc_path}. Maybe you should remove them manually."
+            )
 
         console.print("[bold green]Cleanup completed successfully!")
     except Exception as e:
