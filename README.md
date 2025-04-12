@@ -21,8 +21,8 @@ Seamless proxy management for restricted environments:
 # Install mimamori using uv
 uv tool install mimamori  # or `pip install mimamori` if you prefer pip
 
-# One-command setup - installs and configures everything automatically
-mim setup
+# One-command setup with default settings - installs and configures everything automatically
+mim setup --yes
 
 # After restarting your shell, enjoy a seamless workflow:
 pon                # Enable proxy in current shell
