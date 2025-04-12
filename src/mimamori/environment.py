@@ -8,6 +8,7 @@ def _get_proxy_env(port: int) -> Dict[str, str]:
     http_proxy = f"http://127.0.0.1:{port}"
     https_proxy = http_proxy
     all_proxy = http_proxy
+    no_proxy = "localhost,127.0.0.1"
 
     return {
         "http_proxy": http_proxy,
@@ -16,6 +17,8 @@ def _get_proxy_env(port: int) -> Dict[str, str]:
         "HTTP_PROXY": http_proxy,
         "HTTPS_PROXY": https_proxy,
         "ALL_PROXY": all_proxy,
+        "no_proxy": no_proxy,
+        "NO_PROXY": no_proxy,
     }
 
 
