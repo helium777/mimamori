@@ -48,13 +48,6 @@ class Settings(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         return (TomlConfigSettingsSource(settings_cls),)
 
-    @classmethod
-    def get_settings(cls) -> "Settings":
-        """Get the settings from the config file."""
-        if not MIMAMORI_CONFIG_PATH.exists():
-            cls().save_to_file()
-        return cls()
-
     def save_to_file(self) -> None:
         """Save the current settings to the config file, preserving format and comments."""
         MIMAMORI_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +77,3 @@ class Settings(BaseSettings):
         # Write back to file
         with open(MIMAMORI_CONFIG_PATH, "w") as f:
             f.write(tomlkit.dumps(doc))
-
-
-settings = Settings.get_settings()

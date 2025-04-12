@@ -5,6 +5,7 @@ from pathlib import Path
 import traceback
 from typing import List, Optional, Dict
 import click
+from pydantic import ValidationError
 import requests
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
@@ -14,7 +15,7 @@ from rich.text import Text
 
 from .globals import MIMAMORI_CONFIG_PATH, SERVICE_FILE_PATH
 from . import __version__
-from .settings import settings
+from .settings import Settings
 from .download import download_mihomo, get_latest_version, get_system_info
 from .mihomo_config import create_mihomo_config
 from .utils import (
@@ -44,6 +45,16 @@ from .mihomo_api import (
 
 
 console = Console()
+try:
+    settings = Settings()
+except ValidationError:
+    console.print(
+        "[bold red]Warning: [/bold red]Invalid configuration file. Creating a new one."
+    )
+    if MIMAMORI_CONFIG_PATH.exists():
+        MIMAMORI_CONFIG_PATH.unlink()
+    settings = Settings()
+    settings.save_to_file()
 
 
 @click.group()
@@ -119,7 +130,11 @@ def setup(url: Optional[str], yes: bool) -> None:
                 "[bold]Do you want to create a service file to keep Mihomo running?"
             ):
                 with console.status("[bold]Creating service file..."):
-                    create_service_file(SERVICE_FILE_PATH)
+                    create_service_file(
+                        settings.mihomo.binary_path,
+                        settings.mihomo.config_dir,
+                        SERVICE_FILE_PATH,
+                    )
                     console.print(f"[green]Created service file at {SERVICE_FILE_PATH}")
         else:
             console.print(f"[green]Service file already exists at {SERVICE_FILE_PATH}")
@@ -632,7 +647,6 @@ def _display_proxy_table(proxy_latencies: Dict[str, int]):
 
 def _generate_mihomo_config():
     mihomo_config_path = Path(settings.mihomo.config_dir) / "config.yaml"
-    config_preset = settings.mihomo.config_preset
     port = settings.mihomo.port
     api_port = settings.mihomo.api_port
     subscription = settings.mihomo.subscription
@@ -658,7 +672,6 @@ def _generate_mihomo_config():
     # Create the config
     create_mihomo_config(
         mihomo_config_path,
-        config_preset=config_preset,
         subscription=subscription,
         port=port,
         api_port=api_port,

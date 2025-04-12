@@ -1,18 +1,17 @@
 import subprocess
 from pathlib import Path
 
-from .settings import settings
 from .globals import SERVICE_TEMPLATE
 
 
-def create_service_file(file_path: Path) -> None:
+def create_service_file(binary_path: str, config_dir: str, file_path: Path) -> None:
     """Create the systemd service file."""
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Create the service file
     service_content = SERVICE_TEMPLATE.format(
-        binary_path=settings.mihomo.binary_path,
-        config_dir=settings.mihomo.config_dir,
+        binary_path=binary_path,
+        config_dir=config_dir,
     )
 
     with open(file_path, "w") as f:
