@@ -48,11 +48,13 @@ console = Console()
 try:
     settings = Settings()
 except ValidationError:
-    console.print(
-        "[bold red]Warning: [/bold red]Invalid configuration file. Creating a new one."
-    )
+    backup_path = MIMAMORI_CONFIG_PATH.with_suffix(MIMAMORI_CONFIG_PATH.suffix + ".bak")
     if MIMAMORI_CONFIG_PATH.exists():
-        MIMAMORI_CONFIG_PATH.unlink()
+        MIMAMORI_CONFIG_PATH.replace(backup_path)
+    console.print(
+        "[bold red]Warning: [/bold red]Invalid configuration file. Creating a new one. "
+        f"Old config saved at {backup_path}."
+    )
     settings = Settings()
     settings.save_to_file()
 
