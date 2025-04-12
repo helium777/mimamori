@@ -31,13 +31,26 @@ poff               # Disable proxy when finished
 
 # Or use the proxychains-style command prefix:
 pp curl google.com # Run specific commands through proxy without affecting shell
-
-# Check mimamori status at any time:
-mim status
 ```
 
 > [!CAUTION]
 > The `pp` (or `mim proxy run`) command, while similar to gg/proxychains-ng in usage, only configures environment variables. While most common applications respect these variables, some programs may ignore them. Future versions may implement true transparent proxying.
+
+## Usage
+
+Mimamori offers these additional commands for enhanced user experience:
+
+```bash
+mim status    # View comprehensive status dashboard (service, connectivity, ports, logs)
+
+mim select    # Choose which proxy node to use
+```
+
+## Technical Details
+
+- Mimamori operates in **GLOBAL mode** without traffic rules. This is optimized for GPU servers that primarily access international resources (PyPI, Google Drive, etc.) with minimal need for domestic website allowlisting.
+
+- The default configuration automatically selects functioning nodes from your subscription using the AUTO-FALLBACK strategy group. Use `mim select` when you need to manually choose a specific node.
 
 ## Comparison with Similar Projects
 
