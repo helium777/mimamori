@@ -1,3 +1,13 @@
+## v0.2.1 (2025-04-12)
+
+### 🐛🚑️ Fixes
+
+- add no_proxy environment variable to proxy settings
+
+### 💚👷 CI & Build
+
+- using PAT instead of `github.token`
+
 ## v0.2.0 (2025-04-12)
 
 ### ✨ Features
