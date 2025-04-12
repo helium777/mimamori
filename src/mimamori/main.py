@@ -608,7 +608,7 @@ def _display_proxy_table(proxy_latencies: Dict[str, int]):
     # Create grid for proxies
     proxy_grid = Table.grid(expand=True)
     for _ in range(max_columns):
-        proxy_grid.add_column(ratio=1, overflow="fold")
+        proxy_grid.add_column(ratio=1)
 
     # Add each proxy to the grid
     current_row = []
