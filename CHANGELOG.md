@@ -1,3 +1,21 @@
+## v0.2.2 (2025-04-12)
+
+### 🐛🚑️ Fixes
+
+- remove aliases when cleanup
+
+### ♻️ Refactorings
+
+- remove ServiceSettings from main settings
+
+### 💚👷 CI & Build
+
+- update checkout step to use personal access token
+
+### 📝💡 Documentation
+
+- recommend to use `--yes` in readme
+
 ## v0.2.1 (2025-04-12)
 
 ### 🐛🚑️ Fixes
