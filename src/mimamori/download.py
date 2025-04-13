@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Tuple
 from rich.progress import Progress
 
+from .utils import safe_move
 from .globals import MIHOMO_RELEASES_API_URL
 
 
@@ -82,8 +83,8 @@ def download_mihomo(
     # Ensure the target directory exists
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Download the binary
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+    # Download the compressed binary
+    with tempfile.NamedTemporaryFile() as temp_file:
         with Progress() as progress:
             if show_progress:
                 task = progress.add_task(f"Mihomo {version}", total=100)
@@ -100,13 +101,20 @@ def download_mihomo(
                 if show_progress:
                     progress.update(
                         task,
-                        completed=int(100 * downloaded / total_size) if total_size else 0,
+                        completed=int(100 * downloaded / total_size)
+                        if total_size
+                        else 0,
                     )
 
-    # Extract file
-    with gzip.open(temp_file.name, "rb") as f_in:
-        with open(target_path, "wb") as f_out:
+        # Extract file
+        with (
+            gzip.open(temp_file.name, "rb") as f_in,
+            tempfile.NamedTemporaryFile(delete=False) as f_out,
+        ):
             shutil.copyfileobj(f_in, f_out)
+
+    # Move the extracted file to the target path
+    safe_move(f_out.name, target_path)
 
     # Make the binary executable
     os.chmod(target_path, 0o755)

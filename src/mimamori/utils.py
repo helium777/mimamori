@@ -1,7 +1,10 @@
 from contextlib import closing
+import errno
 import os
 from pathlib import Path
+import shutil
 import socket
+import tempfile
 import time
 import requests
 
@@ -95,3 +98,31 @@ def get_shell_rc_path() -> Path:
     elif "zsh" in shell:
         rc_path = Path.home() / ".zshrc"
     return shell, rc_path
+
+
+def safe_move(src, dst) -> None:
+    """Move a file from source to destination. If the destination file already exists, it will be overwritten.
+
+    - Move is guaranteed to be atomic while `shutil.move()` is not.
+
+    - Move works across different filesystems while `os.rename()` throws an error in that case.
+    """
+    if not isinstance(src, Path):
+        src = Path(src)
+    if not isinstance(dst, Path):
+        dst = Path(dst)
+
+    try:
+        os.rename(src, dst)
+    except OSError as err:
+        if err.errno == errno.EXDEV:
+            with tempfile.NamedTemporaryFile(delete=False, dir=dst.parent) as tmp:
+                # Copy the source file to the destination filesystem
+                shutil.copy(src, tmp.name)
+                # Atomic move
+                os.rename(tmp.name, dst)
+
+            # Remove the source file
+            os.unlink(src)
+        else:
+            raise
