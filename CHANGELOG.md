@@ -1,3 +1,13 @@
+## v0.2.3 (2025-04-13)
+
+### 🐛🚑️ Fixes
+
+- improve the download process when the temporary folder and the binary folder are on different filesystems
+
+### 📝💡 Documentation
+
+- update README
+
 ## v0.2.2 (2025-04-12)
 
 ### 🐛🚑️ Fixes
