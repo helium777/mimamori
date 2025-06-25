@@ -1,53 +1,37 @@
 import gzip
+import logging
 import os
 import platform
-from urllib.parse import urljoin
-import requests
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Tuple
-from rich.progress import Progress
+from typing import IO, Callable
+
+import requests
+from requests.exceptions import RequestException
 
 from .utils import safe_move
-from .globals import MIHOMO_RELEASES_API_URL
 
+logger = logging.getLogger(__name__)
 
 _PLATFORM_MAP = {
     "linux": "linux",
 }
-
 _ARCH_MAP = {
     "x86_64": "amd64",
 }
 
 
-def _get_download_url(platform_name: str, arch_name: str, version: str) -> str:
-    """Get the download URL for the Mihomo binary.
-
-    Args:
-        version: The actual version string (e.g. "v1.0.0")
-    """
-    # Get the release info
-    response = requests.get(urljoin(MIHOMO_RELEASES_API_URL, f"tags/{version}"))
-    response.raise_for_status()
-    release = response.json()
-
-    # Find the appropriate asset
-    asset_name = f"mihomo-{platform_name}-{arch_name}-{version}.gz"
-    for asset in release["assets"]:
-        if asset["name"] == asset_name:
-            return asset["browser_download_url"]
-
-    # Get all available asset names for error reporting
-    available_assets = [asset["name"] for asset in release["assets"]]
-    raise ValueError(
-        f"No compatible Mihomo binary found for {platform_name}-{arch_name}. "
-        f"Available assets: {', '.join(available_assets)}"
-    )
+class DownloadError(Exception):
+    pass
 
 
-def get_system_info() -> Tuple[str, str]:
+def apply_proxy(url: str, github_proxy: str) -> str:
+    url = url.lstrip("https://")
+    return github_proxy + url
+
+
+def get_system_info() -> tuple[str, str]:
     """Get the system platform and architecture."""
     platform_name = platform.system().lower()
     arch_name = platform.machine().lower()
@@ -55,19 +39,58 @@ def get_system_info() -> Tuple[str, str]:
     try:
         platform_name = _PLATFORM_MAP[platform_name]
         arch_name = _ARCH_MAP[arch_name]
-    except KeyError:
-        raise ValueError(f"Unsupported platform: {platform_name} {arch_name}")
+    except KeyError as e:
+        msg = f"Unsupported platform: {platform_name} {arch_name}"
+        logger.error(msg)
+        raise DownloadError(msg) from e
 
     return platform_name, arch_name
 
 
-def get_latest_version() -> str:
-    """Get the latest version of Mihomo."""
-    response = requests.get(urljoin(MIHOMO_RELEASES_API_URL, "latest"))
-    response.raise_for_status()
-    releases = response.json()
+def get_latest_version(github_proxy: str | None = None) -> str:
+    url = "https://github.com/MetaCubeX/mihomo/releases/latest"
 
-    return releases["tag_name"]
+    if github_proxy:
+        proxied_url = apply_proxy(url, github_proxy)
+        try:
+            response = requests.get(proxied_url)
+            response.raise_for_status()
+            return response.url.split("/")[-1]
+        except RequestException:
+            msg = f"Failed to get the latest version from {proxied_url}, trying to use the original URL..."
+            logger.warning(msg)
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.url.split("/")[-1]
+    except RequestException as e:
+        msg = f"Failed to get the latest version from {url}"
+        logger.error(msg)
+        raise DownloadError(msg) from e
+
+
+def _download_url(
+    url: str,
+    f: IO[bytes],
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> None:
+    logger.info(f"Downloading from {url}")
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+
+    total_size = int(response.headers.get("content-length", 0))
+    downloaded = 0
+
+    f.seek(0)
+    f.truncate()
+
+    for chunk in response.iter_content():
+        f.write(chunk)
+        downloaded += len(chunk)
+        progress_callback(downloaded, total_size)
+
+    f.seek(0)
 
 
 def download_mihomo(
@@ -75,48 +98,50 @@ def download_mihomo(
     arch_name: str,
     version: str,
     target_path: Path,
-    show_progress: bool = True,
+    github_proxy: str | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> Path:
-    """Download Mihomo binary."""
-    url = _get_download_url(platform_name, arch_name, version)
+    url = f"https://github.com/MetaCubeX/mihomo/releases/download/{version}/mihomo-{platform_name}-{arch_name}-{version}.gz"
 
     # Ensure the target directory exists
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Download the compressed binary
-    with tempfile.NamedTemporaryFile() as temp_file:
-        with Progress() as progress:
-            if show_progress:
-                task = progress.add_task(f"Mihomo {version}", total=100)
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        downloaded = False
 
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
+        if github_proxy:
+            proxied_url = apply_proxy(url, github_proxy)
+            try:
+                _download_url(proxied_url, temp_file, progress_callback)
+            except RequestException:
+                logger.warning(
+                    f"Failed to download from {proxied_url}, trying to use the original URL..."
+                )
+            downloaded = True
 
-            total_size = int(response.headers.get("content-length", 0))
-            downloaded = 0
+        if not downloaded:
+            try:
+                _download_url(url, temp_file, progress_callback)
+            except RequestException as e:
+                msg = f"Failed to download from {url}"
+                logger.error(msg)
+                raise DownloadError(msg) from e
 
-            for chunk in response.iter_content(chunk_size=8192):
-                temp_file.write(chunk)
-                downloaded += len(chunk)
-                if show_progress:
-                    progress.update(
-                        task,
-                        completed=int(100 * downloaded / total_size)
-                        if total_size
-                        else 0,
-                    )
-
-        # Extract file
-        with (
-            gzip.open(temp_file.name, "rb") as f_in,
-            tempfile.NamedTemporaryFile(delete=False) as f_out,
-        ):
-            shutil.copyfileobj(f_in, f_out)
+    # Extract file
+    with (
+        gzip.open(temp_file.name, "rb") as f_in,
+        tempfile.NamedTemporaryFile(delete=False) as f_out,
+    ):
+        shutil.copyfileobj(f_in, f_out)
 
     # Move the extracted file to the target path
     safe_move(f_out.name, target_path)
 
     # Make the binary executable
     os.chmod(target_path, 0o755)
+
+    # Remove the temporary file
+    os.remove(temp_file.name)
 
     return target_path

@@ -1,23 +1,47 @@
-import os
-import sys
+import logging
 import shutil
+import sys
 from pathlib import Path
-import traceback
-from typing import List, Optional, Dict
+
 import click
 from pydantic import ValidationError
-import requests
 from rich.console import Console
-from rich.prompt import Prompt, Confirm
+from rich.logging import RichHandler
 from rich.panel import Panel
+from rich.progress import Progress
+from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
 
-from .globals import MIMAMORI_CONFIG_PATH, SERVICE_FILE_PATH
 from . import __version__
+from .download import (
+    DownloadError,
+    download_mihomo,
+    get_latest_version,
+    get_system_info,
+)
+from .environment import (
+    generate_export_commands,
+    generate_unset_commands,
+    run_with_proxy_env,
+)
+from .globals import MIMAMORI_CONFIG_PATH, SERVICE_FILE_PATH
+from .mihomo_api import (
+    MihomoAPI,
+)
+from .mihomo_config import MihomoSubscriptionError, create_mihomo_config
 from .settings import Settings
-from .download import download_mihomo, get_latest_version, get_system_info
-from .mihomo_config import create_mihomo_config
+from .systemd import (
+    create_service_file,
+    disable_service,
+    enable_service,
+    get_service_status,
+    is_service_running,
+    reload_daemon,
+    restart_service,
+    start_service,
+    stop_service,
+)
 from .utils import (
     aliases_already_exist,
     check_port_availability,
@@ -25,28 +49,9 @@ from .utils import (
     get_shell_rc_path,
     remove_aliases,
 )
-from .systemd import (
-    create_service_file,
-    is_service_running,
-    reload_daemon,
-    enable_service,
-    disable_service,
-    start_service,
-    stop_service,
-    restart_service,
-    get_service_status,
-)
-from .environment import (
-    generate_export_commands,
-    generate_unset_commands,
-)
-from .environment import run_with_proxy_env
-from .mihomo_api import (
-    MihomoAPI,
-)
-
 
 console = Console()
+logger = logging.getLogger(__name__)
 try:
     settings = Settings()
 except ValidationError:
@@ -63,9 +68,24 @@ except ValidationError:
 
 @click.group()
 @click.version_option(version=__version__, prog_name="mimamori")
-def cli() -> None:
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose output",
+)
+def cli(verbose: bool) -> None:
     """Mimamori: A lightweight CLI for Mihomo proxy management."""
-    pass
+    log_level = logging.ERROR
+    if verbose:
+        log_level = logging.DEBUG
+
+    logging.basicConfig(
+        level=log_level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(console=console, rich_tracebacks=True)],
+    )
 
 
 @cli.command("setup")
@@ -75,150 +95,127 @@ def cli() -> None:
     default=None,
 )
 @click.option(
-    "--yes",
+    "--gh-proxy",
+    "-p",
     is_flag=True,
-    help="Skip all prompts and use default behavior",
+    help="Use GitHub proxy to download Mihomo",
 )
-def setup(url: Optional[str], yes: bool) -> None:
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip all prompts and use default values",
+)
+def setup(url: str | None, gh_proxy: bool, yes: bool) -> None:
     """Set up Mimamori with interactive prompts."""
     if url is None:
-        if settings.mihomo.subscription and (
-            yes
-            or Confirm.ask(
-                f"[bold]Use existing subscription {settings.mihomo.subscription}?"
-            )
-        ):
+        if settings.mihomo.subscription:
             url = settings.mihomo.subscription
         else:
             url = Prompt.ask("[bold]Enter your Mihomo subscription URL")
             settings.mihomo.subscription = url
 
-    try:
-        version = settings.mihomo.version
-        binary_path = Path(settings.mihomo.binary_path)
+    binary_path = Path(settings.mihomo.binary_path)
 
-        console.print()
-        # 1. Download Mihomo binary
-        need_download = False
-        if not binary_path.exists():
-            need_download = True
-        elif yes or Confirm.ask(
-            f"[yellow]Mihomo binary already exists at {binary_path}.[/yellow]\n[bold]Do you want to re-downloading it?[/bold]"
-        ):
-            need_download = True
+    # 1. Download Mihomo binary
+    need_download = not binary_path.exists()
 
-        if need_download:
-            if version == "latest":
-                version = get_latest_version()
-            platform_name, arch_name = get_system_info()
-
-            download_mihomo(
-                platform_name, arch_name, version, binary_path, show_progress=True
-            )
-
-            console.print(f"[green]Downloaded Mihomo {version} to {binary_path}")
-
-        console.print()
-        # 2. Create Mihomo config
-        with console.status("[bold]Creating mihomo config..."):
-            _generate_mihomo_config()
-
+    if need_download:
+        _download_mihomo_binary(gh_proxy)
+    else:
         console.print(
-            f"[green]Created mihomo config at {settings.mihomo.config_dir}/config.yaml"
+            f"[green]Mihomo binary already exists at {binary_path}, skipping download."
+        )
+    console.print()
+
+    # 2. Create Mihomo config
+    with console.status("[bold]Creating mihomo config..."):
+        _generate_mihomo_config()
+
+    console.print(
+        f"[green]Created mihomo config at {settings.mihomo.config_dir}/config.yaml."
+    )
+    console.print()
+
+    # 3. Enable auto-start
+    with console.status("[bold]Enabling auto-start..."):
+        create_service_file(
+            settings.mihomo.binary_path,
+            settings.mihomo.config_dir,
+            SERVICE_FILE_PATH,
         )
 
-        console.print()
-        # 3. Create service file
-        if not SERVICE_FILE_PATH.exists():
-            if yes or Confirm.ask(
-                "[bold]Do you want to create a service file to keep Mihomo running?"
-            ):
-                with console.status("[bold]Creating service file..."):
-                    create_service_file(
-                        settings.mihomo.binary_path,
-                        settings.mihomo.config_dir,
-                        SERVICE_FILE_PATH,
-                    )
-                    console.print(f"[green]Created service file at {SERVICE_FILE_PATH}")
-        else:
-            console.print(f"[green]Service file already exists at {SERVICE_FILE_PATH}")
+    reload_daemon()
+    enable_service()
+    restart_service()
+    console.print("[green]Auto-start enabled successfully.")
+    console.print()
 
-        reload_daemon()
-        enable_service()
-        restart_service()
-
-        console.print()
-        # 4. Set up shell aliases
-        console.print("""[bold]Recommended shell aliases:[/bold]
+    # 4. Set up shell aliases
+    console.print("""[bold]Recommended shell aliases:[/bold]
 alias [cyan]pon[/cyan]=eval $(mim proxy export)  - Enable proxy in current shell
 alias [cyan]poff[/cyan]=eval $(mim proxy unset)  - Disable proxy when done
 alias [cyan]pp[/cyan]=mim proxy run              - Run commands with proxy enabled""")
 
-        shell, rc_path = get_shell_rc_path()
-        if rc_path is None:
+    shell, rc_path = get_shell_rc_path()
+    if rc_path is None:
+        console.print(
+            f"[yellow]Unsupported shell {shell}. Please add the aliases manually."
+        )
+
+    aliases_enabled = False
+    setup_aliases = False
+    if rc_path:
+        if aliases_already_exist(rc_path):
             console.print(
-                f"[yellow]Unsupported shell {shell}. Please add the aliases manually."
+                f"[green]You have already set up the shell aliases in ~/{rc_path.name}"
             )
-
-        aliases_enabled = False
-        setup_aliases = False
-        if rc_path:
-            if aliases_already_exist(rc_path):
-                console.print(
-                    f"[green]You have already set up the shell aliases in ~/{rc_path.name}"
-                )
-                aliases_enabled = True
-            else:
-                need_setup_aliases = yes or Confirm.ask(
-                    "[bold]Do you want to set up these shell aliases?"
-                )
-
-                if need_setup_aliases:
-                    aliases_content = (
-                        "\n### Mimamori aliases ###\n"
-                        "alias pon='eval $(mim proxy export)'\n"
-                        "alias poff='eval $(mim proxy unset)'\n"
-                        "alias pp='mim proxy run'\n"
-                        "### End of Mimamori aliases ###\n"
-                    )
-
-                    with open(rc_path, "a") as f:
-                        f.write(aliases_content)
-                    console.print(f"[green]Added aliases to ~/{rc_path.name}")
-                    aliases_enabled = True
-                    setup_aliases = True
-
-        # 5. Save settings
-        settings.save_to_file()
-
-        console.print()
-        # 6. Print completion message
-        console.print("[green]🥳 Setup completed successfully!")
-        console.print("\nNext steps:")
-        if aliases_enabled:
-            if setup_aliases:
-                console.print(
-                    "[bold yellow]You should restart your shell to apply the aliases."
-                )
-            console.print("- Run [cyan]pon[/cyan] to enable the proxy in current shell")
-            console.print(
-                "- Run [cyan]poff[/cyan] to disable the proxy in current shell"
-            )
-            console.print("- Run [cyan]pp[/cyan] to run commands with proxy enabled")
+            aliases_enabled = True
         else:
-            console.print(
-                "- Run [cyan]eval $(mim proxy export)[/cyan] to enable the proxy in current shell"
-            )
-            console.print(
-                "- Run [cyan]eval $(mim proxy unset)[/cyan] to disable the proxy in current shell"
-            )
-            console.print(
-                "- Run [cyan]mim proxy run[/cyan] to run commands with proxy enabled"
+            need_setup_aliases = yes or Confirm.ask(
+                "[bold]Do you want to set up these shell aliases?"
             )
 
-    except Exception as e:
-        console.print(f"[bold red]Error during setup: [/bold red] {e}")
-        sys.exit(1)
+            if need_setup_aliases:
+                aliases_content = (
+                    "\n### Mimamori aliases ###\n"
+                    "alias pon='eval $(mim proxy export)'\n"
+                    "alias poff='eval $(mim proxy unset)'\n"
+                    "alias pp='mim proxy run'\n"
+                    "### End of Mimamori aliases ###\n"
+                )
+
+                with open(rc_path, "a") as f:
+                    f.write(aliases_content)
+                console.print(f"[green]Added aliases to ~/{rc_path.name}")
+                aliases_enabled = True
+                setup_aliases = True
+        console.print()
+
+    # 5. Save settings
+    settings.save_to_file()
+
+    # 6. Print completion message
+    console.print("[green]🥳 Setup completed successfully!")
+    console.print("\nNext steps:")
+    if aliases_enabled:
+        if setup_aliases:
+            console.print(
+                "[bold yellow]You should restart your shell to apply the aliases."
+            )
+        console.print("- Run [cyan]pon[/cyan] to enable the proxy in current shell.")
+        console.print("- Run [cyan]poff[/cyan] to disable the proxy in current shell.")
+        console.print("- Run [cyan]pp[/cyan] to run commands with proxy enabled.")
+    else:
+        console.print(
+            "- Run [cyan]eval $(mim proxy export)[/cyan] to enable the proxy in current shell."
+        )
+        console.print(
+            "- Run [cyan]eval $(mim proxy unset)[/cyan] to disable the proxy in current shell."
+        )
+        console.print(
+            "- Run [cyan]mim proxy run[/cyan] to run commands with proxy enabled."
+        )
 
 
 @cli.command("status")
@@ -317,61 +314,41 @@ def status() -> None:
 @cli.command("enable")
 def enable() -> None:
     """Enable the Mimamori service."""
-    try:
-        enable_service()
-        console.print("[green]Service enabled successfully.")
-    except Exception as e:
-        console.print(f"[bold red]Error enabling service: [/bold red]{e}")
-        sys.exit(1)
+    enable_service()
+    console.print("[green]Service enabled successfully.")
 
 
 @cli.command("disable")
 def disable() -> None:
     """Disable the Mimamori service."""
-    try:
-        disable_service()
-        console.print("[green]Service disabled successfully.")
-    except Exception as e:
-        console.print(f"[bold red]Error disabling service: [/bold red]{e}")
-        sys.exit(1)
+    disable_service()
+    console.print("[green]Service disabled successfully.")
 
 
 @cli.command("start")
 def start() -> None:
     """Start the Mimamori service."""
-    try:
-        start_service()
-        console.print("[green]Service started successfully.")
-    except Exception as e:
-        console.print(f"[bold red]Error starting service: [/bold red]{e}")
-        sys.exit(1)
+    start_service()
+    console.print("[green]Service started successfully.")
 
 
 @cli.command("stop")
 def stop() -> None:
     """Stop the Mimamori service."""
-    try:
-        stop_service()
-        console.print("[green]Service stopped successfully.")
-    except Exception as e:
-        console.print(f"[bold red]Error stopping service: [/bold red]{e}")
-        sys.exit(1)
+    stop_service()
+    console.print("[green]Service stopped successfully.")
 
 
 @cli.command("restart")
 def restart() -> None:
     """Restart the Mimamori service."""
-    try:
-        restart_service()
-        console.print("[green]Service restarted successfully.")
-    except Exception as e:
-        console.print(f"[bold red]Error restarting service: [/bold red]{e}")
-        sys.exit(1)
+    restart_service()
+    console.print("[green]Service restarted successfully.")
 
 
 @cli.command("reload")
 def reload() -> None:
-    """Apply the latest configuration."""
+    """Apply the latest mimamori configuration."""
     stop_service()
     with console.status("[bold]Generating mihomo config..."):
         _generate_mihomo_config()
@@ -380,25 +357,15 @@ def reload() -> None:
 
 
 @cli.command("update")
-def update() -> None:
+@click.option(
+    "--gh-proxy",
+    is_flag=True,
+    help="Use GitHub proxy to download Mihomo",
+)
+def update(gh_proxy: bool) -> None:
     """Update Mihomo binary."""
-    try:
-        version = settings.mihomo.version
-        binary_path = Path(settings.mihomo.binary_path)
-
-        if version == "latest":
-            version = get_latest_version()
-        platform_name, arch_name = get_system_info()
-
-        download_mihomo(
-            platform_name, arch_name, version, binary_path, show_progress=True
-        )
-
-        console.print(f"[green]Downloaded Mihomo {version} to {binary_path}")
-        console.print("[green]Update completed successfully!")
-    except Exception as e:
-        console.print(f"[bold red]Error updating Mihomo: [/bold red]{e}")
-        sys.exit(1)
+    _download_mihomo_binary(gh_proxy)
+    console.print("[green]Update completed successfully!")
 
 
 @cli.group("config")
@@ -410,77 +377,70 @@ def config() -> None:
 @config.command("show")
 def config_show() -> None:
     """Show current configuration."""
-    try:
-        config_dict = settings.model_dump()
+    config_dict = settings.model_dump()
 
-        console.print("[bold]Current Configuration:")
-        console.print(config_dict)
-    except Exception as e:
-        console.print(f"[bold red]Error showing configuration: [/bold red]{e}")
-        sys.exit(1)
+    console.print("[bold]Current Configuration:")
+    console.print(config_dict)
 
 
 @cli.command("cleanup")
 def cleanup() -> None:
     """Remove all configuration files and binaries, stop service, and delete the service file."""
-    try:
-        status = get_service_status()
-        is_running = status["is_running"]
-        is_enabled = status["is_enabled"]
+    status = get_service_status()
+    is_running = status["is_running"]
+    is_enabled = status["is_enabled"]
 
-        # Stop service if it is running
-        if is_running:
-            stop_service()
-            console.print("[green]Stopped service successfully.")
+    # Stop service if it is running
+    if is_running:
+        stop_service()
+        console.print("[green]Stopped service successfully.")
 
-        # Disable service if it is enabled
-        if is_enabled:
-            disable_service()
-            console.print("[green]Disabled service successfully.")
+    # Disable service if it is enabled
+    if is_enabled:
+        disable_service()
+        console.print("[green]Disabled service successfully.")
 
-        # Remove service file
-        if SERVICE_FILE_PATH.exists():
-            SERVICE_FILE_PATH.unlink()
-            console.print(f"[green]Deleted service file at {SERVICE_FILE_PATH}")
+    # Remove service file
+    if SERVICE_FILE_PATH.exists():
+        SERVICE_FILE_PATH.unlink()
+        console.print(f"[green]Deleted service file at {SERVICE_FILE_PATH}")
 
-        # Remove configuration files
-        config_path = MIMAMORI_CONFIG_PATH
-        config_dir = config_path.parent
-        if config_dir.exists():
-            shutil.rmtree(config_dir)
-            console.print(f"[green]Deleted Mimamori config directory at {config_dir}")
+    # Reload systemd
+    reload_daemon()
 
-        # Remove Mihomo config directory
-        mihomo_config_dir = Path(settings.mihomo.config_dir)
-        if mihomo_config_dir.exists():
-            shutil.rmtree(mihomo_config_dir)
-            console.print(
-                f"[green]Deleted Mihomo config directory at {mihomo_config_dir}"
-            )
+    # Remove configuration files
+    config_path = MIMAMORI_CONFIG_PATH
+    config_dir = config_path.parent
+    if config_dir.exists():
+        shutil.rmtree(config_dir)
+        console.print(f"[green]Deleted Mimamori config directory at {config_dir}")
 
-        # Remove Mihomo binary
-        binary_path = Path(settings.mihomo.binary_path)
-        if binary_path.exists():
-            binary_path.unlink()
-            console.print(f"[green]Deleted Mihomo binary at {binary_path}")
+    # Remove Mihomo config directory
+    mihomo_config_dir = Path(settings.mihomo.config_dir)
+    if mihomo_config_dir.exists():
+        shutil.rmtree(mihomo_config_dir)
+        console.print(f"[green]Deleted Mihomo config directory at {mihomo_config_dir}")
 
-        # Remove Mimamori aliases
-        shell, rc_path = get_shell_rc_path()
-        if not rc_path:
-            console.print(
-                "[yellow]Unsupported shell {shell}. Please remove the aliases manually."
-            )
-        elif remove_aliases(rc_path):
-            console.print(f"[green]Deleted Mimamori aliases in {rc_path}")
-        else:
-            console.print(
-                f"[yellow]No Mimamori aliases found in {rc_path}. Maybe you should remove them manually."
-            )
+    # Remove Mihomo binary
+    binary_path = Path(settings.mihomo.binary_path)
+    if binary_path.exists():
+        binary_path.unlink()
+        console.print(f"[green]Deleted Mihomo binary at {binary_path}")
 
-        console.print("[bold green]Cleanup completed successfully!")
-    except Exception as e:
-        console.print(f"[bold red]Error during cleanup: [/bold red]{e}")
-        sys.exit(1)
+    # Remove Mimamori aliases
+    shell, rc_path = get_shell_rc_path()
+    if not rc_path:
+        console.print(
+            "[yellow]Unsupported shell {shell}. Please remove the aliases manually."
+        )
+    elif remove_aliases(rc_path):
+        console.print(f"[green]Deleted Mimamori aliases in {rc_path}")
+    else:
+        console.print(
+            f"[yellow]No Mimamori aliases found in {rc_path}. Maybe you should remove them manually."
+        )
+
+    console.print("[bold green]Cleanup completed successfully!")
 
 
 @cli.group("proxy")
@@ -507,7 +467,7 @@ def proxy_unset() -> None:
 
 @proxy.command("run", context_settings={"ignore_unknown_options": True})
 @click.argument("command", nargs=-1, required=True)
-def proxy_run(command: List[str]) -> None:
+def proxy_run(command: list[str]) -> None:
     """Run a command with proxy environment variables."""
     if not command:
         console.print("[bold red]Error: No command specified.")
@@ -538,14 +498,10 @@ def select() -> None:
     mihomo_api = MihomoAPI(api_base_url)
 
     # Fetch proxy list
-    try:
-        proxies = mihomo_api.get_proxies("GLOBAL")
+    proxies = mihomo_api.get_proxies("GLOBAL")
 
-        if not proxies:
-            console.print("[bold red]Error:[/bold red] No proxies found.")
-            sys.exit(1)
-    except requests.RequestException as e:
-        console.print(f"[bold red]Error fetching proxy list:[/bold red] {e}")
+    if not proxies:
+        console.print("[bold red]Error:[/bold red] No proxies found.")
         sys.exit(1)
 
     # Test latency for each proxy
@@ -585,22 +541,19 @@ def select() -> None:
         except ValueError:
             console.print("[bold red]Invalid input. Please enter a number.")
             continue
-        except requests.RequestException as e:
-            console.print(f"[bold red]Error updating proxy selection: [/bold red]{e}")
-            sys.exit(1)
 
 
 def main() -> None:
     """Main entry point."""
     try:
         cli()
-    except Exception as e:
-        console.print(f"[bold red]Unexpected error: [/bold red]{e}")
-        console.print(traceback.format_exc())
+    except Exception:
+        logging.exception("Unexpected error")
+        console.print("[bold red]Please contact developer for help.[/bold red]")
         sys.exit(1)
 
 
-def _display_proxy_table(proxy_latencies: Dict[str, int]):
+def _display_proxy_table(proxy_latencies: dict[str, int]) -> None:
     """
     Display a grid of proxies with their latencies.
 
@@ -657,7 +610,7 @@ def _display_proxy_table(proxy_latencies: Dict[str, int]):
     console.print(proxy_grid)
 
 
-def _generate_mihomo_config():
+def _generate_mihomo_config() -> None:
     mihomo_config_path = Path(settings.mihomo.config_dir) / "config.yaml"
     port = settings.mihomo.port
     api_port = settings.mihomo.api_port
@@ -667,27 +620,73 @@ def _generate_mihomo_config():
     if not is_service_running():
         new_port = check_port_availability(port)
         if new_port != port:
-            console.print(
-                f"[yellow]Port {port} is already in use. Using port {new_port} instead."
+            logger.info(
+                f"Port {port} is already in use. Using port {new_port} instead."
             )
             port = new_port
             settings.mihomo.port = port
 
         new_api_port = check_port_availability(api_port)
         if new_api_port != api_port:
-            console.print(
-                f"[yellow]API port {api_port} is already in use. Using port {new_api_port} instead."
+            logger.info(
+                f"API port {api_port} is already in use. Using port {new_api_port} instead."
             )
             api_port = new_api_port
             settings.mihomo.api_port = api_port
 
     # Create the config
-    create_mihomo_config(
-        mihomo_config_path,
-        subscription=subscription,
-        port=port,
-        api_port=api_port,
-    )
+    try:
+        create_mihomo_config(
+            mihomo_config_path,
+            subscription=subscription,
+            port=port,
+            api_port=api_port,
+        )
+    except MihomoSubscriptionError as e:
+        console.print(f"[bold red]Error creating Mihomo config: [/bold red]{e}")
+        console.print(
+            "[bold red]Please check your subscription URL and try again.[/bold red]"
+        )
+        sys.exit(1)
+
+
+def _download_mihomo_binary(gh_proxy: bool) -> None:
+    version = settings.mihomo.version
+    binary_path = Path(settings.mihomo.binary_path)
+
+    if version == "latest":
+        version = get_latest_version(settings.github_proxy if gh_proxy else None)
+    platform_name, arch_name = get_system_info()
+
+    with Progress(transient=True, console=console) as progress:
+        task = progress.add_task("[cyan]Downloading Mihomo...")
+
+        def progress_callback(downloaded: int, total: int):
+            progress.update(task, completed=downloaded, total=total)
+
+        try:
+            download_mihomo(
+                platform_name,
+                arch_name,
+                version,
+                binary_path,
+                github_proxy=settings.github_proxy if gh_proxy else None,
+                progress_callback=progress_callback,
+            )
+        except DownloadError as e:
+            console.print(f"[bold red]Error downloading Mihomo: [/bold red]{e}")
+            if not gh_proxy:
+                console.print(
+                    "[bold yellow]You can try to use the GitHub proxy to download Mihomo."
+                )
+            else:
+                console.print(
+                    f"[bold yellow]Maybe the GitHub proxy {settings.github_proxy} is blocked by your network."
+                    "You can try to set a different proxy in the configuration file."
+                )
+            sys.exit(1)
+
+    console.print(f"[green]Downloaded Mihomo {version} to {binary_path}.")
 
 
 if __name__ == "__main__":

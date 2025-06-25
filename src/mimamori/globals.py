@@ -32,6 +32,5 @@ RestartSec=5s
 WantedBy=default.target
 """
 
-MIHOMO_RELEASES_API_URL = "https://api.github.com/repos/MetaCubeX/mihomo/releases/"
 MIMAMORI_CONFIG_PATH = Path.home() / ".config" / "mimamori" / "config.toml"
 SERVICE_FILE_PATH = Path.home() / ".config" / "systemd" / "user" / "mimamori.service"

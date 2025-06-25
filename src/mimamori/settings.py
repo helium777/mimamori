@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(toml_file=MIMAMORI_CONFIG_PATH)
 
     mihomo: MihomoSettings = Field(default_factory=MihomoSettings)
+    github_proxy: str = Field(default="https://ghfast.top/")
 
     @classmethod
     def settings_customise_sources(

@@ -1,8 +1,17 @@
+import logging
 from pathlib import Path
+
 import requests
 import yaml
+from requests.exceptions import RequestException
 
 from .globals import MIHOMO_CONFIG_TEMPLATE
+
+logger = logging.getLogger(__name__)
+
+
+class MihomoSubscriptionError(Exception):
+    pass
 
 
 def create_mihomo_config(
@@ -24,20 +33,28 @@ def create_mihomo_config(
     template = MIHOMO_CONFIG_TEMPLATE
 
     # Get proxy nodes from the subscription
-    response = requests.get(subscription, headers={"User-Agent": "Clash"})
-    response.raise_for_status()
-    content = response.text
+    try:
+        response = requests.get(
+            subscription, headers={"User-Agent": "Clash"}
+        )  # some subscription may require a user agent to return clash format
+        response.raise_for_status()
+        content = response.text
+    except RequestException as e:
+        logger.error(f"Failed to get subscription from {subscription}: {e}")
+        raise MihomoSubscriptionError(
+            f"Failed to get subscription from {subscription}: {e}"
+        ) from e
 
     sub_yaml = yaml.safe_load(content)
     if not isinstance(sub_yaml, dict):
-        raise ValueError(
-            "Could not parse subscription content as YAML"
+        raise MihomoSubscriptionError(
+            "Could not parse subscription content as YAML."
             f"First 100 characters: {content[:100]}"
         )
 
     proxies = sub_yaml.get("proxies")
     if proxies is None:
-        raise ValueError("No proxies found in the subscription")
+        raise MihomoSubscriptionError("No proxies found in the subscription.")
 
     # Mix the proxies into the template
     config_yaml = yaml.safe_load(template)

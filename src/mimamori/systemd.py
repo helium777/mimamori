@@ -94,7 +94,7 @@ def get_service_status() -> dict:
 
     # Get last log message
     log_output = subprocess.run(
-        ["journalctl", "--user", "-u", "mimamori.service", "-n", "5", "--no-pager"],
+        ["journalctl", "--user", "-u", "mimamori.service", "-n", "10", "--no-pager"],
         capture_output=True,
         text=True,
         check=False,

@@ -89,7 +89,7 @@ def check_proxy_connectivity() -> int:
         return -2
 
 
-def get_shell_rc_path() -> Path:
+def get_shell_rc_path() -> tuple[str, Path]:
     """Get the path to the shell's rc file."""
     shell = os.environ.get("SHELL", "")
     rc_path = None
