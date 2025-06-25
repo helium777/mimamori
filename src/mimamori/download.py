@@ -27,7 +27,6 @@ class DownloadError(Exception):
 
 
 def apply_proxy(url: str, github_proxy: str) -> str:
-    url = url.lstrip("https://")
     return github_proxy + url
 
 
