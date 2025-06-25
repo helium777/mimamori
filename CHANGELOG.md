@@ -1,3 +1,13 @@
+## v0.2.4 (2025-06-25)
+
+### ♻️ Refactorings
+
+- refine ux
+
+### 💚👷 CI & Build
+
+- use --locked option in uv
+
 ## v0.2.3 (2025-04-13)
 
 ### 🐛🚑️ Fixes
