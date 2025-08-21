@@ -138,17 +138,21 @@ def setup(url: str | None, gh_proxy: bool, yes: bool) -> None:
     console.print()
 
     # 3. Enable auto-start
-    with console.status("[bold]Enabling auto-start..."):
-        create_service_file(
-            settings.mihomo.binary_path,
-            settings.mihomo.config_dir,
-            SERVICE_FILE_PATH,
-        )
+    try:
+        with console.status("[bold]Enabling auto-start..."):
+            create_service_file(
+                settings.mihomo.binary_path,
+                settings.mihomo.config_dir,
+                SERVICE_FILE_PATH,
+            )
 
-    reload_daemon()
-    enable_service()
-    restart_service()
-    console.print("[green]Auto-start enabled successfully.")
+        reload_daemon()
+        enable_service()
+        restart_service()
+        console.print("[green]Auto-start enabled successfully.")
+    except Exception:
+        console.print("[bold red]Error: Failed to enable auto-start.")
+
     console.print()
 
     # 4. Set up shell aliases
