@@ -63,13 +63,21 @@ def get_service_status() -> dict:
     result = {}
 
     # Check if service is enabled
-    enabled_output = subprocess.run(
-        ["systemctl", "--user", "is-enabled", "mimamori.service"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    result["is_enabled"] = enabled_output.returncode == 0
+    try:
+        enabled_output = subprocess.run(
+            ["systemctl", "--user", "is-enabled", "mimamori.service"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        result["is_enabled"] = enabled_output.returncode == 0
+    except subprocess.CalledProcessError:
+        return {
+            "is_enabled": False,
+            "is_running": False,
+            "running_time": "N/A",
+            "last_log_messages": [],
+        }
 
     # Check if service is running and get running time
     status_output = subprocess.run(
