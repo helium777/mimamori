@@ -652,7 +652,7 @@ def _download_mihomo_binary(gh_proxy: bool) -> None:
     binary_path = Path(mim_config.get("mihomo.binary_path"))
 
     if version == "latest":
-        version = get_latest_version(mim_config.github_proxy if gh_proxy else None)
+        version = get_latest_version(mim_config.get("github_proxy") if gh_proxy else None)
     platform_name, arch_name = get_system_info()
 
     with Progress(transient=True, console=console) as progress:
