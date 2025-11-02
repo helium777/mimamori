@@ -94,7 +94,9 @@ def cli(verbose: bool) -> None:
 )
 def setup(url: str | None, gh_proxy: bool, no_aliases: bool) -> None:
     """Set up Mimamori with one command."""
-    if url is None:
+    if url is not None:
+        mim_config.set("mihomo.subscription", url)
+    else:
         if mim_config.get("mihomo.subscription"):
             url = mim_config.get("mihomo.subscription")
         else:
