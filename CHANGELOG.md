@@ -1,3 +1,9 @@
+## v0.3.2 (2025-11-02)
+
+### 🐛🚑️ Fixes
+
+- correct subscription URL handling in setup function
+
 ## v0.3.1 (2025-09-09)
 
 ### fix
