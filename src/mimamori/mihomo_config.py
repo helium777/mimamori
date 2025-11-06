@@ -35,7 +35,7 @@ def create_mihomo_config(
     # Get proxy nodes from the subscription
     try:
         response = requests.get(
-            subscription, headers={"User-Agent": "Clash"}
+            subscription, headers={"User-Agent": "Clash"}, timeout=10
         )  # some subscription may require a user agent to return clash format
         response.raise_for_status()
         content = response.text
