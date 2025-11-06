@@ -1,3 +1,9 @@
+## v0.3.3 (2025-11-06)
+
+### 🐛🚑️ Fixes
+
+- add timeout to subscription request in mihomo_config
+
 ## v0.3.2 (2025-11-02)
 
 ### 🐛🚑️ Fixes
